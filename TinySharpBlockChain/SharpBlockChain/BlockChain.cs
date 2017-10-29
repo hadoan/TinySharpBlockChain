@@ -1,6 +1,7 @@
 ﻿using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
+using System.Net.Http;
 using System.Text;
 
 namespace TinySharpBlockChain
@@ -14,6 +15,7 @@ namespace TinySharpBlockChain
         {
             CurrentTransactions = new List<Transaction>();
             Chains = new List<Block>();
+            Nodes = new List<string>();
 
             //Create the genesis block
             NewBlock(100, "1");
@@ -39,6 +41,7 @@ namespace TinySharpBlockChain
         public List<Block> Chains { get; set; }
 
         public List<Transaction> CurrentTransactions { get; set; }
+        public List<string> Nodes { get; set; }
 
         /// <summary>
         /// Create a new Block in the Blockchain
@@ -118,6 +121,87 @@ namespace TinySharpBlockChain
         public Block LastBlock
         {
             get => Chains[this.Chains.Count - 1];
+        }
+
+        /// <summary>
+        /// Add a new node to the list of nodes
+        /// </summary>
+        /// <param name="address">Address of node. Eg http://localhost:5000</param>
+        public void RegisterNode(string address)
+        {
+            Nodes.Add(address);
+        }
+
+        /// <summary>
+        /// Determine if a given blockchain is valid
+        /// </summary>
+        /// <param name="chains"></param>
+        /// <returns></returns>
+        public bool ValidaChain(List<Block> chains)
+        {
+            var lastBlock = chains[0];
+            Block block = null;
+            var currentIndex = 1;
+            while (currentIndex<chains.Count)
+            {
+                block = chains[currentIndex];
+                Console.WriteLine($"Last block: {JsonConvert.SerializeObject(lastBlock)}");
+                Console.WriteLine($"Block: {JsonConvert.SerializeObject(block)}");
+
+                //Check that the hash of the block is correct
+                if (block.PreviousHash != Hash(lastBlock)) return false;
+
+                //Check that the Proof of Work is correct
+                if (!ValidProof(lastBlock.Proof, block.Proof)) return false;
+
+                lastBlock = block;
+                currentIndex += 1;
+            }
+            return true;
+        }
+
+        /// <summary>
+        /// This is our Consensus Algorithm, it resolves conflicts
+        /// by replacing our chain with the longest one in the network
+        /// </summary>
+        /// <returns><bool> True if our chain was replaced, False if not</returns>
+        public bool ResolveConflicts()
+        {
+            var neighbours = Nodes;
+            List<Block> newChain = null;
+
+            //We're only looking for chains longer than ours
+            var maxLength = Chains.Count;
+            
+            //Grab and verify the chains from all the nodes in our network
+            foreach(var node in neighbours)
+            {
+                var url = $"{node}//api//blockchain//fullchain";
+                using (var client = new HttpClient())
+                {
+                    var response = client.GetAsync(url).GetAwaiter().GetResult();
+                    if(response.StatusCode==System.Net.HttpStatusCode.OK)
+                    {
+                        var content = response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
+                        var fullChainObj = JsonConvert.DeserializeObject<FullChainObject>(content);
+
+                        if(fullChainObj.Length>maxLength && ValidaChain(fullChainObj.Chains))
+                        {
+                            maxLength = fullChainObj.Length;
+                            newChain = fullChainObj.Chains;
+                        }
+                    }
+                }
+               
+            }
+
+            //Replace our chain if we discovered a new, valid chain longer than ours
+            if (newChain != null)
+            {
+                Chains = newChain;
+                return true;
+            }
+            return false;
         }
     }
 }

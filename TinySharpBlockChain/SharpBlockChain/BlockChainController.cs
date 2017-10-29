@@ -47,11 +47,17 @@ namespace TinySharpBlockChain
         [HttpGet, Route("api/blockchain/fullchain")]
         public object FullChain()
         {
-            return new
+            return new FullChainObject
             {
-                Chain = BlockChain.Instance.Chains,
+                Chains = BlockChain.Instance.Chains,
                 Length = BlockChain.Instance.Chains.Count
             };
         }
+    }
+
+    public class FullChainObject
+    {
+        public int Length { get; set; } 
+        public List<Block> Chains { get; set; }
     }
 }
